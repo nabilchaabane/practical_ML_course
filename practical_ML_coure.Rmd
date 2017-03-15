@@ -1,0 +1,173 @@
+# Exercise quality assessment
+#### author: Nabil Chaabane
+
+## Synopsis
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+The goal of this project is to predict the manner in which they did the exercise. This is the `classe` variable in the training set.
+
+## Initial configuration
+
+The initial configuration consists of loading some required packages and initializing some variables.
+
+```{r configuration, echo=TRUE, results='hide'}
+
+# Data variables
+filename_training <- "data/pml-training.csv"
+filename_testing <- "data/pml-testing.csv"
+
+# Reproducability
+#I used the following libraries
+
+# Caret: v6.0.73
+
+# rpart: v4.1.10
+
+# randomForest: v4.6.12
+
+# I used the following seed 
+set.seed(1234)
+```
+## Data processing and cleanup
+
+In this section, I split the data into testing and training subsets. Rows with missing information are removed. Irrelevant columns are detected and removed.
+
+```{r dataprocessing, echo=TRUE, results='hide'}
+
+# Read the data
+training_data <-read.csv(filename_training, na.strings=c("NA","#DIV/0!", ""))
+testing_data  <-read.csv(filename_testing,  na.strings=c("NA","#DIV/0!", ""))
+
+# Split data into testing and training dat
+inTrain <- createDataPartition(y=training_data$classe, p=0.6)[[1]]
+training <- training_data[inTrain, ]
+testing <- training_data[-inTrain, ]
+
+# Remove the first 7 columns which contain dummy data
+training <- training[,-c(1:7)]
+
+# Find the near zero values and remove them
+data_NZV <- nearZeroVar(training, saveMetrics=TRUE)
+training <- training[, !data_NZV$nzv]
+
+# Remove the columns with more than 50% missing values
+indices_to_be_removed <- sapply(colnames(training), 
+  function(x) if(sum(is.na(training[, x])) > 0.50 * nrow(training))
+  {
+    return(TRUE)
+  }
+  else
+  {
+    return(FALSE)
+  }
+)
+training <- training[, !indices_to_be_removed]
+
+```
+
+## Expected out-of-sample error
+Confusion matrices applied to the testing partition are used to estimate the out-of-sample error.
+
+## Prediction models
+We compare two methods: random forests and decision trees
+
+### Decision tree
+We first build a decision tree and test its accuracy.
+
+```{r decisiontree, echo=TRUE}
+
+# Fit model
+mod_fit_decision_tree <- rpart(classe ~ ., data = training, method = "class")
+
+# Perform prediction
+predict_decision_tree <- predict(mod_fit_decision_tree, testing, type = "class")
+
+# Compute the accuracy of the decision tree
+confusionMatrix(predict_decision_tree, testing$classe)
+```
+#### Confusion Matrix and Statistics
+
+```
+##           Reference
+## Prediction    A    B    C    D    E
+##          A 1980  212   21   72   31
+##          B   85  862   72   90   98
+##          C   56  153 1086  209  175
+##          D   71  101  110  823   89
+##          E   40  190   79   92 1049
+
+## Overall Statistics
+                                          
+##                Accuracy : 0.7392          
+##                  95% CI : (0.7294, 0.7489)
+##     No Information Rate : 0.2845          
+##     P-Value [Acc > NIR] : < 2.2e-16       
+##                                          
+##                   Kappa : 0.6699          
+##  Mcnemar's Test P-Value : < 2.2e-16       
+
+## Statistics by Class:
+
+##                      Class: A Class: B Class: C Class: D Class: E
+## Sensitivity            0.8871   0.5679   0.7939   0.6400   0.7275
+## Specificity            0.9401   0.9455   0.9085   0.9434   0.9374
+## Pos Pred Value         0.8549   0.7142   0.6468   0.6893   0.7234
+## Neg Pred Value         0.9544   0.9012   0.9543   0.9304   0.9386
+## Prevalence             0.2845   0.1935   0.1744   0.1639   0.1838
+## Detection Rate         0.2524   0.1099   0.1384   0.1049   0.1337
+## Detection Prevalence   0.2952   0.1538   0.2140   0.1522   0.1848
+## Balanced Accuracy      0.9136   0.7567   0.8512   0.7917   0.8324
+```
+
+### Random forest
+Next, we build a random forest and test its performance.
+#### Build the random forest
+```{r randomforest, echo=TRUE}
+mod_fit_rf <- randomForest(classe ~ ., data = training, method="class")
+
+# Perform prediction
+predict_rf <- predict(mod_fit_rf, testing, type = "class")
+
+# Compute the accuracy of the random forest
+confusionMatrix(predict_rf, testing$classe)
+```
+
+```
+## Confusion Matrix and Statistics
+
+##          Reference
+## Prediction    A    B    C    D    E
+         A 2232   10    0    0    0
+         B    0 1503   12    0    0
+         C    0    5 1354   20    2
+         D    0    0    2 1264    2
+         E    0    0    0    2 1438
+
+## Overall Statistics
+                                          
+##                Accuracy : 0.993           
+##                  95% CI : (0.9909, 0.9947)
+##     No Information Rate : 0.2845          
+##     P-Value [Acc > NIR] : < 2.2e-16       
+##                                           
+##                   Kappa : 0.9911          
+##  Mcnemar's Test P-Value : NA              
+
+## Statistics by Class:
+
+##                      Class: A Class: B Class: C Class: D Class: E
+## Sensitivity            1.0000   0.9901   0.9898   0.9829   0.9972
+## Specificity            0.9982   0.9981   0.9958   0.9994   0.9997
+## Pos Pred Value         0.9955   0.9921   0.9804   0.9968   0.9986
+## Neg Pred Value         1.0000   0.9976   0.9978   0.9967   0.9994
+## Prevalence             0.2845   0.1935   0.1744   0.1639   0.1838
+## Detection Rate         0.2845   0.1916   0.1726   0.1611   0.1833
+## Detection Prevalence   0.2858   0.1931   0.1760   0.1616   0.1835
+## Balanced Accuracy      0.9991   0.9941   0.9928   0.9911   0.9985
+
+```
+
+## Conclusion
+
+We observe that the random forest performs better than the decision tree. In fact, the accuracy of the random forest is 0.993 compared to 0.739 for the decision tree. Hence, we choose the random forest model. Given the high accuracy of the random forest model, we expect very few test samples will be misclassified. 
